@@ -121,11 +121,11 @@ class Docker implements Serializable {
                 } else {
                     if (docker.script.sh(script: "docker inspect -f . ${toRun}", returnStatus: true) != 0) {
                         // Not yet present locally.
-                        // withDockerContainer requires the image to be available locally, since its start phase is not a durable task.
+                        // withDockerImage requires the image to be available locally, since its start phase is not a durable task.
                         pull()
                     }
                 }
-                docker.script.withDockerContainer(image: toRun, args: args, toolName: docker.script.env.DOCKER_TOOL_NAME) {
+                docker.script.withDockerImage(image: toRun, args: args, toolName: docker.script.env.DOCKER_TOOL_NAME) {
                     body()
                 }
             }
@@ -137,10 +137,17 @@ class Docker implements Serializable {
             }
         }
 
+        public Container runEnhanced(String entryPoint = '', String command = '', String user = null, workspace = null, includeVolumes = true, includeEnvironment = true, String args = '') {
+            docker.node {
+                def container = docker.script.dockerRun(image: id, args: args, entryPoint: entryPoint, command: command, user: user, workspace: workspace, includeVolumes: includeVolumes, includeEnvironment: includeEnvironment)
+                new Container(docker, container)
+            }
+        }
+
         public Container run(String args = '', String command = "") {
             docker.node {
                 def container = docker.script.sh(script: "docker run -d${args != '' ? ' ' + args : ''} ${id}${command != '' ? ' ' + command : ''}", returnStdout: true).trim()
-                docker.script.dockerFingerprintRun containerId: container, toolName: docker.script.env.DOCKER_TOOL_NAME
+                docker.script.dockerFingerprintRun(containerId: container, toolName: docker.script.env.DOCKER_TOOL_NAME)
                 new Container(docker, container)
             }
         }
@@ -186,8 +193,20 @@ class Docker implements Serializable {
             this.id = id
         }
 
+        public <V> V inside(String user = '', Closure<V> body) {
+            docker.node {
+                docker.script.insideDockerContainer(container: id, user: user, toolName: docker.script.env.DOCKER_TOOL_NAME) {
+                    body()
+                }
+            }
+        }
+
         public void stop() {
-            docker.script.sh "docker stop ${id} && docker rm -f ${id}"
+            docker.script.sh "docker stop ${id}"
+        }
+
+        public void rm() {
+            docker.script.sh "docker rm -f ${id}"
         }
 
         public String port(int port) {

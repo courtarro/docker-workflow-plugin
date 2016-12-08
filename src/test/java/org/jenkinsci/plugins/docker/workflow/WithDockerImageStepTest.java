@@ -58,7 +58,7 @@ import org.jvnet.hudson.test.Issue;
 import org.jvnet.hudson.test.LoggerRule;
 import org.jvnet.hudson.test.RestartableJenkinsRule;
 
-public class WithContainerStepTest {
+public class WithDockerImageStepTest {
 
     @ClassRule public static BuildWatcher buildWatcher = new BuildWatcher();
     @Rule public RestartableJenkinsRule story = new RestartableJenkinsRule();
@@ -68,7 +68,7 @@ public class WithContainerStepTest {
     @Test public void configRoundTrip() {
         story.addStep(new Statement() {
             @Override public void evaluate() throws Throwable {
-                WithContainerStep s1 = new WithContainerStep("java");
+                WithDockerImageStep s1 = new WithDockerImageStep("java");
                 s1.setArgs("--link db:db");
                 story.j.assertEqualDataBoundBeans(s1, new StepConfigTester(story.j).configRoundTrip(s1));
                 story.j.jenkins.getDescriptorByType(DockerTool.DescriptorImpl.class).setInstallations(new DockerTool("docker15", "/usr/local/docker15", Collections.<ToolProperty<?>>emptyList()));
@@ -85,7 +85,7 @@ public class WithContainerStepTest {
                 WorkflowJob p = story.j.jenkins.createProject(WorkflowJob.class, "prj");
                 p.setDefinition(new CpsFlowDefinition(
                     "node {\n" +
-                    "  withDockerContainer('httpd:2.4.12') {\n" +
+                    "  withDockerImage('httpd:2.4.12') {\n" +
                     "    sh 'cp /usr/local/apache2/conf/extra/httpd-userdir.conf .; ls -la'\n" +
                     "  }\n" +
                     "  sh 'ls -la; cat *.conf'\n" +
@@ -137,7 +137,7 @@ public class WithContainerStepTest {
                 WorkflowJob p = story.j.jenkins.createProject(WorkflowJob.class, "prj");
                 p.setDefinition(new CpsFlowDefinition(
                     "node {\n" +
-                    "  withDockerContainer('httpd:2.4.12') {\n" +
+                    "  withDockerImage('httpd:2.4.12') {\n" +
                     "    sh 'trap \\'echo got SIGTERM\\' TERM; trap \\'echo exiting; exit 99\\' EXIT; echo sleeping now with JENKINS_SERVER_COOKIE=$JENKINS_SERVER_COOKIE; sleep 999'\n" +
                     "  }\n" +
                     "}", true));
@@ -157,7 +157,7 @@ public class WithContainerStepTest {
                 WorkflowJob p = story.j.jenkins.createProject(WorkflowJob.class, "prj");
                 p.setDefinition(new CpsFlowDefinition(
                     "node {\n" +
-                    "  withDockerContainer('httpd:2.4.12') {\n" +
+                    "  withDockerImage('httpd:2.4.12') {\n" +
                     "    sh \"sleep 5; kill -9 `cat ${pwd tmp: true}/*/pid`\"\n" +
                     "  }\n" +
                     "}", true));
@@ -174,7 +174,7 @@ public class WithContainerStepTest {
                 WorkflowJob p = story.j.jenkins.createProject(WorkflowJob.class, "prj");
                 p.setDefinition(new CpsFlowDefinition(
                     "node {\n" +
-                    "  withDockerContainer('httpd:2.4.12') {\n" +
+                    "  withDockerImage('httpd:2.4.12') {\n" +
                     "    semaphore 'wait'\n" +
                     "    sh 'cat /usr/local/apache2/conf/extra/httpd-userdir.conf'\n" +
                     "  }\n" +
@@ -206,13 +206,13 @@ public class WithContainerStepTest {
                 WorkflowJob p = story.j.jenkins.createProject(WorkflowJob.class, "prj");
                 p.setDefinition(new CpsFlowDefinition(
                     "node {\n" +
-                    "  withDockerContainer('ubuntu') {\n" +
+                    "  withDockerImage('ubuntu') {\n" +
                     "    withCredentials([[$class: 'FileBinding', credentialsId: 'secretfile', variable: 'FILE']]) {\n" +
                     "      sh 'cat $FILE'\n" +
                     "    }\n" +
                     "  }\n" +
                     "  withCredentials([[$class: 'FileBinding', credentialsId: 'secretfile', variable: 'FILE']]) {\n" +
-                    "    withDockerContainer('ubuntu') {\n" +
+                    "    withDockerImage('ubuntu') {\n" +
                     "      sh 'tr \"a-z\" \"A-Z\" < $FILE'\n" +
                     "    }\n" +
                     "  }\n" +
@@ -236,13 +236,13 @@ public class WithContainerStepTest {
                 WorkflowJob p = story.j.jenkins.createProject(WorkflowJob.class, "prj");
                 p.setDefinition(new CpsFlowDefinition(
                     "node {\n" +
-                    "  withDockerContainer('ubuntu') {\n" +
+                    "  withDockerImage('ubuntu') {\n" +
                         "  wrap([$class: 'ConfigFileBuildWrapper', managedFiles: [[fileId: '" + config.id + "', variable: 'FILE']]]) {\n" +
                         "    sh 'cat $FILE'\n" +
                         "  }\n" +
                     "  }\n" +
                     "  wrap([$class: 'ConfigFileBuildWrapper', managedFiles: [[fileId: '" + config.id + "', variable: 'FILE']]]) {\n" +
-                    "    withDockerContainer('ubuntu') {\n" +
+                    "    withDockerImage('ubuntu') {\n" +
                     "      sh 'tr \"a-z\" \"A-Z\" < $FILE'\n" +
                     "    }\n" +
                     "  }\n" +
@@ -263,7 +263,7 @@ public class WithContainerStepTest {
                 WorkflowJob p = story.j.jenkins.createProject(WorkflowJob.class, "prj");
                 p.setDefinition(new CpsFlowDefinition(
                     "node {\n" +
-                    "  withDockerContainer('ubuntu') {\n" +
+                    "  withDockerImage('ubuntu') {\n" +
                     "    sh 'mkdir subdir && echo somecontent > subdir/file'\n" +
                     "    dir('subdir') {\n" +
                     "      sh 'pwd; tr \"a-z\" \"A-Z\" < file'\n" +

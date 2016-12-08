@@ -95,7 +95,7 @@ public class DockerClient {
     }
 
     /**
-     * Run a docker image.
+     * Run a Docker image to start a new container.
      *
      * @param launchEnv Docker client launch environment.
      * @param image The image name.
@@ -105,16 +105,20 @@ public class DockerClient {
      * @param volumesFromContainers Mounts all volumes from the given containers.
      * @param containerEnv Environment variables to set in container.
      * @param user The <strong>uid:gid</strong> to execute the container command as. Use {@link #whoAmI()}.
-     * @param entrypoint The command to execute in the image container being run.
+     * @param entrypoint The entrypoint to be used for the container being run.
+     * @param command The cmd parameter of the container being run.
      * @return The container ID.
      */
-    public String run(@Nonnull EnvVars launchEnv, @Nonnull String image, @CheckForNull String args, @CheckForNull String workdir, @Nonnull Map<String, String> volumes, @Nonnull Collection<String> volumesFromContainers, @Nonnull EnvVars containerEnv, @Nonnull String user, @Nonnull String entrypoint) throws IOException, InterruptedException {
+    public String run(@Nonnull EnvVars launchEnv, @Nonnull String image, @CheckForNull String args, @CheckForNull String workdir, @Nonnull Map<String, String> volumes, @Nonnull Collection<String> volumesFromContainers, @Nonnull EnvVars containerEnv, @CheckForNull String user, @CheckForNull String entrypoint, @CheckForNull String command) throws IOException, InterruptedException {
         ArgumentListBuilder argb = new ArgumentListBuilder();
 
-        argb.add("run", "-t", "-d", "-u", user);
-        if (args != null) {
-            argb.addTokenized(args);
+        // -t = allocate a TTY, -d = start as a daemon in the background
+        argb.add("run", "-t", "-d");
+
+        if (user == null) {
+            user = whoAmI();
         }
+        argb.add("-u", user);
         
         if (workdir != null) {
             argb.add("-w", workdir);
@@ -127,10 +131,24 @@ public class DockerClient {
         }
         for (Map.Entry<String, String> variable : containerEnv.entrySet()) {
             argb.add("-e");
-            argb.addMasked(variable.getKey()+"="+variable.getValue());
+            argb.addMasked(variable.getKey() + "=" + variable.getValue());
         }
-        argb.add("--entrypoint").add(entrypoint).add(image);
+        if (entrypoint != null) {
+            argb.add("--entrypoint", entrypoint);
+        }
 
+        // Add any special arguments
+        if (args != null) {
+            argb.addTokenized(args);
+        }
+
+        // Image ID and command go last
+        argb.add(image);
+        
+        if (command != null) {
+            argb.add(command);
+        }
+        
         LaunchResult result = launch(launchEnv, false, null, argb);
         if (result.getStatus() == 0) {
             return result.getOut();
@@ -140,10 +158,47 @@ public class DockerClient {
     }
 
     /**
+     * Execute a command on a running Docker container.
+     *
+     * @param launchEnv Docker client launch environment.
+     * @param containerId The running container ID.
+     * @param command The command to execute
+     * @param user The <strong>uid:gid</strong> to execute the container command as. Use {@link #whoAmI()}.
+     * @param args Any additional arguments for the {@code docker run} command.
+     * @return Command output
+     */
+    public String exec(@Nonnull EnvVars launchEnv, @Nonnull String containerId, @Nonnull String command, @CheckForNull String user, @CheckForNull String args) throws IOException, InterruptedException {
+        ArgumentListBuilder argb = new ArgumentListBuilder();
+
+        // -t = allocate a TTY, -d = start as a daemon in the background
+        argb.add("exec", "-t", "-d");
+
+        if (user == null) {
+            user = whoAmI();
+        }
+        argb.add("-u", user);
+
+        // Add any special arguments
+        if (args != null) {
+            argb.addTokenized(args);
+        }
+
+        // Container ID
+        argb.add(containerId);
+        
+        // Command goes last
+        argb.add(command);
+        
+        LaunchResult result = launch(launchEnv, false, null, argb);
+        if (result.getStatus() == 0) {
+            return result.getOut();
+        } else {
+            throw new IOException(String.format("Failed to execute command in container '%s'. Error: %s", containerId, result.getErr()));
+        }
+    }
+    
+    /**
      * Stop a container.
-     * 
-     * <p>                              
-     * Also removes ({@link #rm(EnvVars, String)}) the container.
      * 
      * @param launchEnv Docker client launch environment.
      * @param containerId The container ID.
@@ -153,7 +208,6 @@ public class DockerClient {
         if (result.getStatus() != 0) {
             throw new IOException(String.format("Failed to kill container '%s'.", containerId));
         }
-        rm(launchEnv, containerId);
     }
 
     /**
@@ -163,8 +217,7 @@ public class DockerClient {
      * @param containerId The container ID.
      */
     public void rm(@Nonnull EnvVars launchEnv, @Nonnull String containerId) throws IOException, InterruptedException {
-        LaunchResult result;
-        result = launch(launchEnv, false, "rm", "-f", containerId);
+        LaunchResult result = launch(launchEnv, false, "rm", "-f", containerId);
         if (result.getStatus() != 0) {
             throw new IOException(String.format("Failed to rm container '%s'.", containerId));
         }

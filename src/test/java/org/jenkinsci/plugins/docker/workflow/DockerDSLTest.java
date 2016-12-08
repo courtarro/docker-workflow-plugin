@@ -105,8 +105,7 @@ public class DockerDSLTest {
         }
     }
 
-
-    @Test public void inside() {
+    @Test public void imageInside() {
         story.addStep(new Statement() {
             @Override public void evaluate() throws Throwable {
                 assumeDocker();
@@ -117,6 +116,88 @@ public class DockerDSLTest {
                     "  sh 'cat /usr/local/apache2/conf/extra/httpd-userdir.conf'\n" +
                     "  42\n" +
                     "}; echo \"the answer is ${r}\"", true));
+                WorkflowRun b = p.scheduleBuild2(0).waitForStart();
+                SemaphoreStep.waitForStart("wait/1", b);
+            }
+        });
+        story.addStep(new Statement() {
+            @Override public void evaluate() throws Throwable {
+                SemaphoreStep.success("wait/1", null);
+                WorkflowJob p = story.j.jenkins.getItemByFullName("prj", WorkflowJob.class);
+                WorkflowRun b = p.getLastBuild();
+                story.j.assertLogContains("Require method GET POST OPTIONS", story.j.assertBuildStatusSuccess(story.j.waitForCompletion(b)));
+                story.j.assertLogContains("the answer is 42", b);
+                DockerClient client = new DockerClient(new Launcher.LocalLauncher(StreamTaskListener.NULL), null, null);
+                String httpdIID = client.inspect(new EnvVars(), "httpd:2.4.12", ".Id");
+                Fingerprint f = DockerFingerprints.of(httpdIID);
+                assertNotNull(f);
+                DockerRunFingerprintFacet facet = f.getFacet(DockerRunFingerprintFacet.class);
+                assertNotNull(facet);
+                assertEquals(1, facet.records.size());
+                assertNotNull(facet.records.get(0).getContainerName());
+                assertEquals(Fingerprint.RangeSet.fromString("1", false), facet.getRangeSet(p));
+                assertEquals(Collections.singleton("httpd"), DockerImageExtractor.getDockerImagesUsedByJobFromAll(p));
+            }
+        });
+    }
+
+    @Test public void containerInside() {
+        story.addStep(new Statement() {
+            @Override public void evaluate() throws Throwable {
+                assumeDocker();
+                WorkflowJob p = story.j.jenkins.createProject(WorkflowJob.class, "prj");
+                p.setDefinition(new CpsFlowDefinition(
+                    "def image = docker.image('httpd:2.4.12')\n" +
+                    "def container = image.runEnhanced(null, null, '0:0')\n" +
+                    "def r = container.inside('0:0') {\n" +
+                    "  sh(script: 'id -g', returnStdout: true).trim()\n" +
+                    "}; echo \"Superuser ID is ${r}\"\n" +
+                    "container.inside('0:0') {\n" +
+                    "  sh 'rm nohup.out'\n" +
+                    "}\n" +
+                    "r = container.inside {\n" +
+                    "  sh 'cat /usr/local/apache2/conf/extra/httpd-userdir.conf'\n" +
+                    "  sh(script: 'id -g', returnStdout: true).trim()\n" +
+                    "}; echo \"Default user ID is ${r}\"\n" +
+                    "node {\n" + 
+                    "  container.stop()\n" +
+                    "  container.rm()\n" +
+                    "}", true));
+                WorkflowRun b = p.scheduleBuild2(0).waitForStart();
+                story.j.assertLogContains("Require method GET POST OPTIONS", story.j.assertBuildStatusSuccess(story.j.waitForCompletion(b)));
+                story.j.assertLogContains("Superuser ID is 0", b);
+                story.j.assertLogNotContains("Default user ID is 0", b);
+                DockerClient client = new DockerClient(new Launcher.LocalLauncher(StreamTaskListener.NULL), null, null);
+                String httpdIID = client.inspect(new EnvVars(), "httpd:2.4.12", ".Id");
+                Fingerprint f = DockerFingerprints.of(httpdIID);
+                assertNotNull(f);
+                DockerRunFingerprintFacet facet = f.getFacet(DockerRunFingerprintFacet.class);
+                assertNotNull(facet);
+                assertEquals(1, facet.records.size());
+                assertNotNull(facet.records.get(0).getContainerName());
+                assertEquals(Fingerprint.RangeSet.fromString("1", false), facet.getRangeSet(p));
+                assertEquals(Collections.singleton("httpd"), DockerImageExtractor.getDockerImagesUsedByJobFromAll(p));
+            }
+        });
+    }
+    
+    @Test public void containerInsideWithWait() {
+        story.addStep(new Statement() {
+            @Override public void evaluate() throws Throwable {
+                assumeDocker();
+                WorkflowJob p = story.j.jenkins.createProject(WorkflowJob.class, "prj");
+                p.setDefinition(new CpsFlowDefinition(
+                    "def image = docker.image('httpd:2.4.12')\n" +
+                    "def container = image.runEnhanced('cat')\n" +
+                    "def r = container.inside('0:0') {\n" +
+                    "  semaphore 'wait'\n" +
+                    "  sh 'cat /usr/local/apache2/conf/extra/httpd-userdir.conf'\n" +
+                    "  42\n" +
+                    "}; echo \"the answer is ${r}\"\n" +
+                    "node {\n" + 
+                    "  container.stop()\n" +
+                    "  container.rm()\n" +
+                    "}", true));
                 WorkflowRun b = p.scheduleBuild2(0).waitForStart();
                 SemaphoreStep.waitForStart("wait/1", b);
             }
@@ -193,8 +274,8 @@ public class DockerDSLTest {
                 p.setDefinition(new CpsFlowDefinition(
                     "node {\n" +
                     "  def img = docker.image('httpd:2.4.12')\n" +
-                    "  img.run().stop()\n" +
-                    "  img.run('--memory-swap=-1').stop()\n" +
+                    "  img.run().stop().rm()\n" +
+                    "  img.run('--memory-swap=-1').stop().rm()\n" +
                     "  img.withRun {}\n" +
                     "  img.withRun('--memory-swap=-1') {}\n" +
                     "  img.inside {}\n" +
@@ -399,7 +480,7 @@ public class DockerDSLTest {
                 p.setDefinition(new CpsFlowDefinition(
                         "node {\n" +
                                 "     def busybox = docker.image('busybox');\n" +
-                                "     busybox.run('--tty', 'echo \"Hello\"').stop();\n" +
+                                "     busybox.run('--tty', 'echo \"Hello\"').stop().rm();\n" +
                                 "}", true));
                 WorkflowRun b = story.j.assertBuildStatusSuccess(p.scheduleBuild2(0));
                 story.j.assertLogContains("Hello", b);

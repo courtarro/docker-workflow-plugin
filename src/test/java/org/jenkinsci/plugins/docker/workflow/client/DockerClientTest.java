@@ -62,7 +62,7 @@ public class DockerClientTest {
         EnvVars launchEnv = newLaunchEnv();
         String containerId =
                 dockerClient.run(launchEnv, "learn/tutorial", null, null, Collections.<String, String>emptyMap(), Collections.<String>emptyList(), new EnvVars(),
-                        dockerClient.whoAmI(), "cat");
+                        dockerClient.whoAmI(), "cat", "");
         Assert.assertEquals(64, containerId.length());
         ContainerRecord containerRecord = dockerClient.getContainerRecord(launchEnv, containerId);
         Assert.assertEquals(dockerClient.inspect(launchEnv, "learn/tutorial", ".Id"), containerRecord.getImageId());
@@ -74,6 +74,7 @@ public class DockerClientTest {
         // Also test that the stop works and cleans up after itself
         Assert.assertNotNull(dockerClient.inspect(launchEnv, containerId, ".Name"));
         dockerClient.stop(launchEnv, containerId);
+        dockerClient.rm(launchEnv, containerId);
         Assert.assertNull(dockerClient.inspect(launchEnv, containerId, ".Name"));
     }
 
