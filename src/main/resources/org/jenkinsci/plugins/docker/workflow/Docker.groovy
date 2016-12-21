@@ -201,12 +201,14 @@ class Docker implements Serializable {
             }
         }
 
-        public void stop() {
+        public Container stop() {
             docker.script.sh "docker stop ${id}"
+            this
         }
 
-        public void rm() {
+        public Container rm() {
             docker.script.sh "docker rm -f ${id}"
+            this
         }
 
         public String port(int port) {
